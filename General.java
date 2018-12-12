@@ -4,9 +4,6 @@ import core.Log;
 import org.openqa.selenium.By;
 import java.util.ArrayList;
 
-/**
- * Created by olehk on 07/04/2017.
- */
 public class General {
 
     public static String getMiddleValue(String originalString, String startSubStr, String endSubStr){
