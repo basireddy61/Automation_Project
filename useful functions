@@ -1,0 +1,2002 @@
+    export async function findAllRowsWithMatchingColumnText(grid: ElementFinder, searchTexts: string[], colIds: string[]) {
+        const rowCount = await getGridRowCount(grid);
+        const results = new Array();
+        const rows = new Array(rowCount);
+        for (let i = rowCount - 1; i >= 0; --i) {
+            rows[i] = new Array(colIds.length);
+            if (i % MAX_ROWS_TO_SCROLL === 0) {
+                await scrollToRow(grid, i, false, AgGridRowIdentifier.RowIndex);
+            }
+            for (let x = 0; x < colIds.length; ++x) {
+                rows[i][x] = await getGridCell(grid, i, colIds[x]).getText()
+            }
+        }
+        rows.reverse();
+        for (let i = 0; i < rowCount; ++i) {
+            if (rows[i].toString() === searchTexts.toString()) {
+                results.push(i)
+            }
+        }
+        return results;
+    }
+
+	
+	
+	
+	/**
+    * Counts the total number of rows in an ag-grid, scrolling through the ag-grid, if needed.
+    *
+    * @param grid - The ag-grid containing rows to count
+    * @return number - the number of rows found in the grid
+    * 
+    */
+    export async function getGridRowCount(grid: ElementFinder) {
+        let rowCount = 0;
+        //ensure the grid is on the page
+        expect(await grid.isPresent(), "specified Ag-Grid not found").to.equal(true);
+        //ensure the grid contains rows
+        expect((await getAllGridRows(grid)).length, "No rows found in grid.").to.be.gt(0);
+        //ensure grid is at the first row in grid
+        await scrollToRowIndex(grid, rowCount);
+        //scroll fast, multiple rows at a time
+        while (true) {
+            rowCount += MAX_ROWS_TO_SCROLL;
+            try {
+                await scrollToRow(grid, rowCount, true, AgGridRowIdentifier.RowIndex);
+            } catch (e) {
+                //Check if an unexpected error occurred, if so return failure reason
+                expect(e.name, "Unexpected error: " + e).to.equal("NoSuchElementError")
+                //Exceeded number of rows in grid, rollback counter so we can count the remainder
+                rowCount -= MAX_ROWS_TO_SCROLL;
+                break;
+            }
+        }
+        //scroll slow, 1 row at a time
+        while (true) {
+            rowCount += 1;
+            try {
+                await scrollToRow(grid, rowCount, true, AgGridRowIdentifier.RowIndex);
+            } catch (e) {
+                //Check if an unexpected error occurred, if so return failure reason
+                expect(e.name, "Unexpected error: " + e).to.equal("NoSuchElementError")
+                //We have surpassed the last row in the grid
+                break;
+            }
+        }
+        return rowCount;
+    }
+
+	
+	
+	
+	/**
+     * Retrieves all of the row-index attribute values from rows currently loaded in the DOM.
+     *
+     * @param grid - ag-grid containing the rows to retrieve the row-indices from
+     * @return comma delimited string of all the row-index values found in the grid
+     * 
+     */
+    async function getLoadedRowIndexValues(grid: ElementFinder) {
+        const rowIndices = await grid.all(by.css('div.ag-body-container>div.ag-row-level-0[role="row"]')).getAttribute('row-index');
+        return rowIndices.toString();
+    }
+	
+
+	
+	
+    /**
+     * Scrolls to a row in an ag-grid.
+     *
+     * NOTE: the row to scroll to must be loaded in the DOM, otherwise the element will not be found and a NoSuchElementError is thrown
+     *
+     * @param grid - The ag-grid to scroll
+     * @param rowNum - The row number value to scroll to, based on the rowType attribute
+     * @param AgGridRowIdentifier - the rowType attribute to use to locate rows in the grid.  If not specified, rowIndex attribute is used.
+     * 
+     */
+    export function scrollToRow(grid: ElementFinder, rowNum: number, alignTop: boolean = true, rowType: AgGridRowIdentifier = AgGridRowIdentifier.RowIndex) {
+        const elm = grid.element(by.css('div[ref="eBodyContainer"] div[' + rowType + '="' + rowNum + '"]'));
+        return browser.executeScript("arguments[0].scrollIntoView(" + alignTop + ");", elm.getWebElement());
+    }
+	
+	
+	
+	export async function scrollToRowIndex(grid: ElementFinder, rowIndex: number) {
+        let lastRowInView: number = -1;
+        expect(rowIndex, "Invalid row-index specified.  Row-index must be 0 or greater").to.be.gte(0);
+        while (true) {
+            const rowIndices = (await getLoadedRowIndexValues(grid)).split(',').map(Number);
+            rowIndices.sort((a, b) => a - b);
+            expect(lastRowInView, "Invalid row-index specified.  Row-index: \"" + rowIndex + "\" could not be found in the grid").to.not.equal(rowIndices[rowIndices.length - 1]);
+            lastRowInView = rowIndices[rowIndices.length - 1]
+            if (rowIndices.includes(rowIndex)) {
+                await scrollToRow(grid, rowIndex, true, AgGridRowIdentifier.RowIndex);
+                break;
+            } else if (lastRowInView < rowIndex) {
+                await scrollToRow(grid, lastRowInView, true, AgGridRowIdentifier.RowIndex);
+            } else {
+                await scrollToRow(grid, rowIndices[0], false, AgGridRowIdentifier.RowIndex);
+            }
+        }
+    }
+
+/**
+ * TEST DATA GENERATOR
+ * Set of functions that generate test data for validating test scripts or submitting dummy data
+ */
+
+export namespace TestDataGenerator {
+
+    export const DATE_AS_STRING = "STRING";
+    export const DATE_AS_DATE = "DATE";
+    export const PAST_DATE = "PAST";
+    export const FUTURE_DATE = "FUTURE";
+    export const DATA_MODE_BLANK = "INCLUDE_BLANK";
+    export const DATA_MODE_DEFAULT = "EXCLUDE_BLANK";
+
+    /**
+     * Returns a random number between min (inclusive) and max (exclusive)
+     */
+    export function getRndValue(minOffsetValue, maxOffsetValue: number) {
+        return Math.random() * (maxOffsetValue - minOffsetValue) + minOffsetValue;
+    }
+
+    /**
+    * Print formated console log by adding time stamps, caller function etc
+    * @param – logMessage, plain string message to be printed
+    * @param – logData, [optional] additional data to be passed and printed
+    **/
+    export function printConsoleLog(logMessage: string, logData?: any) {
+        const now = new Date();
+        const dateStamp = now.getFullYear() + '-' + (now.getMonth() + 1) + '-' + now.getDate()
+            + ' / ' + now.getHours() + ':' + now.getMinutes() + ':' + now.getSeconds();
+        if (logData === undefined) { logData = '*** NO DATA SUPPLIED ***' }
+        //console.log('CALLER: ', printConsoleLog.caller.name, ' // ')
+        console.log('### LOG ' + dateStamp + ': ' + logMessage + ' ### : ' + logData);
+    }
+
+    /**
+     * @param timeFrame: PAST_DATE, FUTURE_DATE
+     * @param format : Date (DATE_AS_DATE) to String (DATE_AS_STRING)
+     * @param dateRangeInDays: Max this many days in the past or future. If ommitted 3650 is used
+     */
+    export function getTestDate(timeFrame: string, format?: string, dateRangeInDays?: number): any {
+        let dateArrow; //-1 is past , 1 is future
+        if (format === undefined) { format = DATE_AS_STRING }
+        if (dateRangeInDays === undefined) { dateRangeInDays = 3650 }; // if ommitted, will use 10 years
+        if (timeFrame === PAST_DATE) { dateArrow = -1 } else { dateArrow = 1 }
+
+        const dateOffset = getRndValue(1, dateRangeInDays) * 1440 * 60 * 1000; // 1440 * 60 sec * 1000ms = ms in one day
+        const today = new Date();
+        const newDate = new Date(today.getTime() + (dateArrow * dateOffset));
+        let newMonth: any = newDate.getMonth() + 1;
+        let newDay: any = newDate.getDate();
+        if (newMonth < 10) { newMonth = "0" + newMonth }
+        if (newDay < 10) { newDay = "0" + newDay }
+        if (format === DATE_AS_DATE) {
+            return newDate;
+        } else { // "STRING"
+            return newDate.getFullYear() + "-" + newMonth + "-" + newDay;
+        }
+    }
+
+    /**
+     * Pass a string and the function will append and return it with a random integer
+     * @param wantThisText : the base string. e.g. Pass "Test String" and you will get back something like "Test String 4981"
+     *
+     */
+    export function getTextWithRandomNumber(wantThisText?: string) {
+        if (wantThisText === undefined) { wantThisText = 'Just Text' } // This could be randomized too
+        const finalText = wantThisText + " " + getRndValue(10000000, 99900999).toFixed(0);
+        return finalText;
+    }
+
+    export function getBlankString() {
+        return '';
+    }
+
+    export function getRandomTestDataFromList(...p: any[]) {
+        if (p.length === 0) { return }
+        return p[Math.floor(Math.random() * p.length) + 0];
+    }
+
+    export function getRndValueMultiple(minOffsetValue, maxOffsetValue, multiplesOf = 1) {
+        return Math.floor(Math.random() * (maxOffsetValue - minOffsetValue) + minOffsetValue) * multiplesOf;
+
+    }
+
+}
+
+import { expect } from 'chai';
+import { browser, by, protractor, ElementFinder, ElementArrayFinder, ExpectedConditions as EC } from 'protractor';
+import { DateTense, ElementState } from './enumeration';
+import * as _ from 'lodash'
+export namespace TestCommon {
+  export let decodedImage: string
+
+  /**
+   * This function compares the  content of given arrays
+   * @param expectedArray - Expected array content
+   * @param expectedArray - Actual array content
+   * @param message  - Message to show when given arrays content are not matching.
+   *
+   * */
+  export async function confirmArrayContent(expectedArray: string[], actualArray: string[], message: string) {
+    await expect(actualArray).deep.equal(expectedArray, "\n" + message + " \n" + expectedArray + "\n\nActual: \n\n" + actualArray)
+  }
+
+  /**
+   *
+   * function changes the first letter of a string uppercase,
+   * but not change the case of any of the other letters
+   * Eg: marketOperation >> MarketOperation
+   * @param str   Enter the string to convert
+   * @returns      converted string
+   */
+  export function capitalizeFirstLetter(str: string): string {
+    return str.charAt(0).toUpperCase() + str.slice(1);
+  }
+
+  /**
+  * Validate that an attribute of a web element value matches the expected text.
+  *
+  * @param elm - the web element to confirm
+  * @param attrib - the attribute to validate
+  * @param text - the value to confirm matches an element's value
+  **/
+  export function confirmAttribute(elm: ElementFinder, attrib: string, text: string) {
+    return elm.getAttribute(attrib)
+      .then((val) =>
+        expect(val).to.be.equal(text))
+  }
+
+  /**
+  * Validate that a web element has a specified CSS class applied
+  *
+  * @param elm - the webelement to validate
+  * @param classValue - the CSS class name to confirm is applied
+  **/
+  export function confirmCSSApplied(elm: ElementFinder, classValue: string, message?: string) {
+    return elm.getAttribute('class')
+      .then((classes) => {
+        expect(classes.split(' ').indexOf(classValue), message + '\n' + classValue + " not in " + classes).to.be.gte(0)
+      })
+  }
+
+  /**
+  * Validate that a web element has a specified CSS class applied
+  *
+  * @param elm - the web element to validate
+  * @param classValue - the CSS class name to confirm is applied
+  **/
+  export function confirmCSSNotApplied(elm: ElementFinder, classValue: string, message?: string) {
+    return elm.getAttribute('class')
+      .then((classes) => {
+        expect(classes.split(' ').indexOf(classValue), message + '\n' + classValue + " not in " + classes).to.be.equal(-1)
+      })
+  }
+
+
+  /**
+  * Verify if the element is disabled
+  * @param elm the element it's verifying.
+  **/
+  export function confirmDisabled(elm: ElementFinder) {
+    return elm.isEnabled()
+      .then((attr) => {
+        expect(attr, "Expected to be disabled").to.be.false
+      });
+  }
+
+  /**
+   * Confirm the date string in a webElement matches an expected Date/Time.
+   *
+   *  NOTES:
+   *   - The webElement cannot be of type INPUT.  Use confirmInputElementDate()
+   *   - The date and time must match exactly.
+   *
+   * @param elm - the Iwebelement that contains the date string to confirm
+   * @param date - a Date object set to the date you are expecting
+   **/
+  export function confirmElementDate(elm: ElementFinder, date: Date) {
+    return elm.getAttribute("innerHTML")
+      .then((elmText) => {
+        expect(new Date(elmText)).to.be.deep.equal(date);
+      });
+  }
+
+  /**
+  * Checks whether the specified element is currently in focus.
+  * @param elm - element to validate has focus
+  */
+  export function confirmElementHasFocus(elm: ElementFinder) {
+    return elm.getAttribute("outerHTML")
+      .then((expected) =>
+        browser.driver.switchTo().activeElement().getAttribute("outerHTML")
+          .then((actual) =>
+            expect(actual).to.be.equal(expected)))
+  }
+
+
+  /**
+  * Verify if the element is enabled
+  * @param elm the element it's verifying.
+  **/
+  export function confirmEnabled(elm: ElementFinder) {
+    return elm.isEnabled()
+      .then((attr) => {
+        expect(attr, "Expected to be enabled").to.be.true
+      });
+  }
+
+
+  /**
+  * Validates a web element is enabled then clicks on it
+  * @param elm - the webelement to validate is enabled and to click
+  **/
+  export function confirmEnabledAndClick(elm: ElementFinder) {
+    return confirmEnabled(elm)
+      .then(() =>
+        elm.click());
+  }
+
+  /**
+  * Confirm the date string in an INPUT webElement matches an expected Date.
+  *
+  *  NOTES:
+  *   - The webElement must be of type INPUT.
+  *   - A date is considered equal if the date/time matches exactly
+  * @param elm - the INPUT webelement that contains the date string to confirm
+  * @param date - a Date object set to the date/time you are expecting
+  **/
+  export function confirmInputElementDate(elm: ElementFinder, date: Date) {
+    return elm.getAttribute('value')
+      .then((elmValue) => {
+        //if elmValue
+        expect(new Date(elmValue)).to.be.deep.equal(date);
+      });
+  }
+
+  /**
+  * Validate the expected text is present in the array of text of WebElement array.
+  *
+  * NOTE: This will work with single WebElement or Array of WebElements
+  * @param elements - an array of webelement to validate
+  * @param text - the value to confirm matches an element's text
+  **/
+  //export function confirmListContainsText (elm: ElementFinder, values: string) {
+  //  return element.all(elm.locator()).map(function (items) {
+  export function confirmListContainsText(elements: ElementArrayFinder, values: string) {
+    return elements.map(function (items) {
+      return items.getText()
+    }).then(function (items) {
+      //console.log(`${items} matches ${values}`);
+      expect(items).to.contain(values);
+    });
+  }
+
+  /**
+   * Validate the text of the OPTION values contained in a SELECT webelement
+   * and they are in the expected order
+   *
+   * @param selectElm - the SELECT webelement that contains to OPTION text to validate
+   * @param optionsText - an array of strings representing the expected text and order of the OPTION tags
+   **/
+  export function confirmOptions(selectElm: ElementFinder, optionsText: string[]) {
+    return selectElm.all(by.tagName('option')).getText()
+      .then((values) =>
+        expect(values).to.be.deep.equal(optionsText));
+  }
+
+  /**
+  * Validate that a SELECT web element’s currently selected OPTION matches the expected text
+  * @param selectElm - the SELECT webelement to check which option is currently selected
+  * @param text - the text value of the OPTION you want to confirm is currently selected
+  **/
+  export function confirmSelectedOption(selectElm: ElementFinder, text: string) {
+    return browser.wait(EC.textToBePresentInElement(selectElm.$('option:checked'), text), 2000, "Selected option did not match expected value.\nExpected: " + text + "")
+  }
+
+
+  /**
+  * Verifies the expcted tab order with that of actual tab order for selected page.
+  * @param PAGE_TAB_ORDER   - array of element finders in the expected tab order of the current page.
+  * Function validates ID of the element first and if ID does not exist it validates against the outerHTML.
+  */
+  export async function confirmTabOrder(PAGE_TAB_ORDER: ElementFinder[]) {
+    const expectedTabOrderID: string[] = []
+    const actualTabOrderID: string[] = await getActualTabOrder(PAGE_TAB_ORDER.length)
+    for (let i = 0; i < PAGE_TAB_ORDER.length; i++) {
+      expectedTabOrderID.push(await PAGE_TAB_ORDER[i].getAttribute('id'))
+      if (!expectedTabOrderID[i]) {
+        expectedTabOrderID[i] = await PAGE_TAB_ORDER[i].getAttribute('outerHTML')
+      }
+    }
+    await expect(actualTabOrderID).deep.equal( expectedTabOrderID, "\nTab order does not match. \n\n Expected: \n" + expectedTabOrderID + "\n\nActual: \n\n" + actualTabOrderID)
+  }
+
+  /**
+   * Validate the text of a web element matches the expected text.
+   *
+   * NOTE: This does NOT work for validating values contained in INPUT web elements, use confirmValue() instead
+   * @param elm - the webelement to validate
+   * @param text - the value to confirm matches an element's text
+   **/
+  export function confirmText(elm: ElementFinder, text: string) {
+    return elm.getText()
+      .then((elmText) => {
+        expect(elmText).to.be.equal(text);
+      });
+  }
+  /**
+* Validate the text of a input web element is not empty.
+* @param elmId - the webelement to validate
+**/
+  export function confirmTextNotEmpty(elmId: ElementFinder) {
+    return elmId.getAttribute('value')
+      .then((val) =>
+        expect(val).not.to.be.equal(""))
+  }
+
+  /**
+    * Validate that the a web element value matches the expected text.
+    *
+    * NOTE: This function should be used to confirm the value in an INPUT element.
+    * @param elm - the webelement to confirm
+    * @param text - the value to confirm matches an element's value
+    **/
+  export function confirmValue(elm: ElementFinder, text: string) {
+    return elm.getAttribute('value')
+      .then((val) =>
+        expect(val).to.be.equal(text))
+    //console.log("expected: " + text + " actual: " + val ))
+  }
+
+  /**
+  * Validate that a web element is present and visible on the current page
+  * @param elm - the webelement to validate is present and visible
+  **/
+  export function confirmVisible(elm: ElementFinder) {
+    return elm.isDisplayed()
+      .then((isVisible) => {
+        expect(isVisible).to.be.true;
+      })
+  }
+
+  /**
+    * Confirm the state(Enable/Disable) of an Element based on the parameters passed.
+    * @param elm - the Element to confirm
+    * @param statusToCheck - the state that is expected to confirm
+    **/
+  export async function confirmElementState(elm: ElementFinder, stateToCheck: ElementState) {
+    switch (stateToCheck) {
+      case ElementState.Enable: {
+        await confirmEnabled(elm)
+        break;
+      }
+      case ElementState.Disable: {
+        await confirmDisabled(elm)
+        break;
+      }
+    }
+  }
+
+  /**
+   * Converts a Date object into a string with a format of YYYYMMDD.  A delimiter may also be specified
+   * which will be placed before and after the MM component of the date (e.g. YYYY-MM-DD, YYYY/MM/DD, etc.)
+   *
+   * @param theDate the date to convert to a string with a format of YYYYMMDD
+   * @param delim the delimiter to place before and after the MM component of the date.
+   **/
+  export function convertDateToStringYYYYMMDD(theDate: Date, delim?: string): string {
+    let dd: string;
+    let mm: string;
+    const yyyy = theDate.getFullYear();
+    if (!delim) {
+      delim = ""
+    }
+    if (theDate.getDate() < 10) {
+      dd = "0" + theDate.getDate();
+    } else {
+      dd = "" + theDate.getDate();
+    }
+    if ((theDate.getMonth() + 1) < 10) {
+      mm = "0" + (theDate.getMonth() + 1);
+    } else {
+      mm = "" + (theDate.getMonth() + 1);
+    }
+    return yyyy + delim + mm + delim + dd;
+  }
+
+  export function convertMonthNumberToMonthShortName(monthNumber: number) {
+    const monthShortNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
+      "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"
+    ];
+    return monthShortNames[monthNumber]
+  }
+
+  /**
+  * Enter text into a webElement.
+  *
+  * NOTE: The webElement must support the sendKeys() method
+  *
+  * @param elm - the webelement to confirm
+  * @param text - the value to enter in the webElement
+  **/
+  export function enterText(elm: ElementFinder, text: string) {
+    return elm.sendKeys(protractor.Key.CONTROL, "a", protractor.Key.DELETE, protractor.Key.NULL)
+      .then(() =>
+        elm.sendKeys(text));
+  }
+
+  /**finds key in a key:value object */
+  export function findKeyInObject(obj, val: string) {
+    const key = _.findKey(obj, (v) => {
+      return v === val;
+    })
+    return key
+  }
+
+  /**
+    * Generate a random business date or today's date, based on the value of "tense". Valid tense values are:
+    * - "FUTURE" generate a Business day (Monday - Friday) up to one year in the FUTURE.
+    * - "PAST" generate a Business day (Monday - Friday) up to one year in the PAST.
+    * - "TODAY" generate TODAY's date, which may or may not fall on a business day.
+    *
+    *
+    * @param tense Determines if the date returned will be in the FUTURE, PAST, TODAY, or a specific date
+    *              - "PAST" will generate a random business date up to 1 year in the past from today's date
+    *              - "FUTURE" will generate a random business date up to 1 year in the future from today's date
+    *              - "TODAY" will generate today's date, which may or may not fall on a business day
+    **/
+  export function generateBusinessDate(tense: string, dateRange = 365): Date {
+    const generatedDate = new Date()
+    if (tense.toUpperCase() === DateTense.Past || tense.toUpperCase() === DateTense.Future) {
+      do {
+        if (tense.toUpperCase() === DateTense.Past) {
+          generatedDate.setDate(generatedDate.getDate() + Math.floor((Math.random() * -dateRange) - 1))
+        } else {
+          generatedDate.setDate(generatedDate.getDate() + Math.floor((Math.random() * dateRange) + 1))
+        }
+      } while ((generatedDate.getDay() === 0 || generatedDate.getDay() === 6))
+    } else if (tense.toUpperCase() !== DateTense.Today) {
+      return null;
+    }
+    return generatedDate;
+  }
+
+  /**
+   * Generate a specific date from a date string having the format "YYYYMMDD".
+   * @param theDate A date string having the format "YYYYMMDD" (e.g. 20181231)
+   * @param delim Optional delimiter that is used to separate the date components
+   * @param offset Optional number of days used to offset the date
+   **/
+  export function generateDateFromStringYYYYMMDD(theDate: string, delim = "", offset = 0): Date {
+    const generatedDate = new Date(parseInt(theDate.substr(0, 4), 10), parseInt(theDate.substr(delim.length + 4, 2), 10) - 1, parseInt(theDate.substr(2 * delim.length + 6, 2), 10))
+    generatedDate.setDate(generatedDate.getDate() + offset);
+    return generatedDate;
+  }
+
+
+  /**
+  * Retrieves the array of web element that has tab order startign from the tab index - 0 (first tab index)
+  * @param totalElement   - Total number of elements having tab order in selected page
+  * Function returns the array of web element which has tab order.
+  */
+  export async function getActualTabOrder(totalElement) {
+    const actualTabOrder: string[] = []
+    for (let i = 0; i < totalElement; i++) {
+      await browser.actions().sendKeys(protractor.Key.TAB).perform();
+      await browser.waitForAngular();
+      actualTabOrder.push(await browser.driver.switchTo().activeElement().getAttribute('id'))
+      if (!actualTabOrder[i]) {
+        actualTabOrder[i] = await browser.driver.switchTo().activeElement().getAttribute('outerHTML');
+      }
+    }
+    return actualTabOrder
+  }
+
+  /**
+ * returns an array of all values in an associative array (i.e. key:value array)
+ * @param keyValueArray - the associative array to retrieve all the values from
+ **/
+  export function getAllValuesInAssociativeArray(keyValueArray) {
+    return Object.keys(keyValueArray)
+      .map((key) => {
+        return keyValueArray[key];
+      })
+  }
+
+  /**
+  * return the current time hh:mm:ss
+  **/
+  export function getCurrentTime(): string {
+    const d = new Date();
+    const timeArray = d.toString().split(" ", 5);
+    return timeArray[4];
+  }
+
+  /**
+  * Returns the option text that is currently been selected.
+  *
+  * * @param selectElm - the SELECT webelement that contains to OPTION to retrieve
+   **/
+  export async function getSelectedOption(selectElm: ElementFinder) {
+    const value = await selectElm.$('option:checked').getText();
+    return value.trim();
+  }
+
+  /**
+ * Function returns unique values from an array
+ * @param arr   - Pass the array
+ **/
+  export function getUniqueValuesFromArray(arr: any[]): any {
+    return arr.filter((x, i, a) => a.indexOf(x) === i)
+  }
+
+
+  /**
+   * @description saves screenshot when a scenario fails in local
+   * 
+   * @param scenario Scenario object
+   * @param screenshot image string to write
+   */
+  export async function saveScreenshotToLocal(scenario, screenshot) {
+    const fs = require('fs');
+    const path = require('path');
+    const dir = './e2e/reports/screenshots';
+
+    const now = new Date()
+    const hours = (now.getHours() < 10 ? '0' : '') + now.getHours()
+    const mins = (now.getMinutes() < 10 ? '0' : '') + now.getMinutes()
+    const sec = (now.getSeconds() < 10 ? '0' : '') + now.getSeconds()
+    const ts = now.toISOString().replace(/\T.*$/, '').replace(/-/g, '') + '_' + hours + mins + sec
+
+    //create folder screenshots, if it doesn't exist
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir)
+    }
+
+    // Writing screenshot to a file
+    function writeScreenShot(data, filename) {
+      const imageStream = fs.createWriteStream('./e2e/reports/screenshots/' + filename);
+      imageStream.write(new Buffer(data, 'base64'));
+      imageStream.end();
+    }
+    const featureFileName = ((scenario.scenario.uri).split(path.sep))
+    writeScreenShot(screenshot, featureFileName[featureFileName.length - 1] + '-line' + scenario.scenario.line + '-' + ts + '.png')
+  }
+
+  /**
+  * Select an OPTION contained in a SELECT control.
+  *
+  * NOTE: This function is dependent on the SELECT webelement having an “id” attribute specified.
+  * @param selectElm - the SELECT webelement that contains to OPTION to select
+  * @param optionText - the string value of the OPTION to select.  Value cannot be an empty string.
+  **/
+  export function selectOption(selectElm: ElementFinder, optionText: string) {
+    return selectElm.all(by.tagName('option'))
+      .filter((elem, ind) => {
+        return elem.getText()
+          .then((text) => {
+            return text.trim() === optionText
+          })
+      }).first().click()
+  }
+
+
+  /**
+ * @description takes and saves screenshot to local when scenario fails
+ * 
+ * @param scenario Scenario object
+ */
+  export async function takeScreenshot(scenario) {
+    if (scenario.status === 'failed') {
+      await browser.takeScreenshot()
+        .then(async function (screenshot) {
+          decodedImage = screenshot
+          await TestCommon.saveScreenshotToLocal(scenario, screenshot)
+        })
+    } else {
+      decodedImage = undefined
+    }
+  }
+
+
+  /**
+   * Wait for element to contains a specified string.
+   * NOTE: contains means a partial match will work and an exact match is not needed to return true
+   * @param elm the element it's waiting on / verifying.
+   * @param text the text to confirm the element contains.
+   * @param waitTime  - time to wait (in milliseconds) for an element to contain the matching text, if not specified wait time is set to 5000
+   **/
+  export function waitForElementToContainText(elm: ElementFinder, text: string, waitTime: number = 5000, msg: string = "Element did not contain the expected text") {
+    return browser.wait(EC.textToBePresentInElement(elm, text), waitTime, msg)
+  }
+
+  /**
+  * Waits for an element to be loaded in the page.
+  *
+  * @param elem   - the webelement you would like to wait for
+  * @param waitTime  - time to wait (in milliseconds) for an element to be loaded, if not specified wait time is set to 5000
+  **/
+  export function waitForElementToLoad(elem: ElementFinder, waitTime: number = 5000, msg: string = "Element took too long to appear in the DOM") {
+    return browser.wait(EC.presenceOf(elem), waitTime, msg);
+  }
+
+  /**
+   * Verify if the element is invisible
+   * @param elm the element it's verifying.
+   * @param waitTime  - time to wait (in milliseconds) for an element to NOT be visible, if not specified wait time is set to 5000
+   **/
+  export function waitForElementNotToBeVisible(elm: ElementFinder, waitTime: number = 5000, msg: string = "Element was expected to become invisible but remained visible") {
+    return browser.wait(protractor.ExpectedConditions.invisibilityOf(elm), waitTime, msg);
+  }
+
+  /**
+   * Verify if the element is visible
+   * @param elm the element it's verifying.
+   * @param waitTime  - time to wait (in milliseconds) for an element to be visible, if not specified wait time is set to 5000
+   **/
+  export function waitForElementVisibility(elm: ElementFinder, waitTime: number = 5000, msg: string = "Element was expected to become visible but remained invisible") {
+    return browser.wait(protractor.ExpectedConditions.visibilityOf(elm), waitTime, msg);
+  }
+
+  /**
+   * Verify if the element is disabled
+   * @param elm the element it's verifying.
+   * @param waitTime  - time to wait (in milliseconds) for an element to be disabled, if not specified wait time is set to 5000
+   **/
+  export function waitForElementToBeDisabled(elm: ElementFinder, waitTime: number = 5000, msg: string = "Element was expected to become disabled but remained enabled") {
+    return browser.wait(EC.not(EC.elementToBeClickable(elm)), waitTime, msg);
+  }
+
+
+  /**
+  * Select an OPTION contained in a SELECT control.  Will wait till the option is available.
+  * Will timeout if condition is not met.
+  *
+  * @param selectElm - the SELECT webelement that contains to OPTION to select
+  * @param optionText - the string value of the OPTION to select. Value cannot be an empty string.
+  * @param messageSuffix - the string value to describe the given select box
+  * @param waitTime  - time to wait (in milliseconds) for the option to be selected, if not specified wait time is set to 5000
+  **/
+  export function waitTillOptionIsSelected(selectElm: ElementFinder, optionText: string, messageSuffix: string, waitTime: number = 5000) {
+    return browser.wait(protractor.ExpectedConditions.textToBePresentInElement(
+      selectElm.all(by.tagName('option'))
+        .filter((elem, index) => {
+          return elem.getText()
+            .then((text) => {
+              return text.trim() === optionText
+            })
+        }).first(), optionText), waitTime, "Failed to select option " + optionText + " from the " + messageSuffix + " select box.")
+      .then(() =>
+        selectOption(selectElm, optionText))
+  }
+
+
+
+  /**
+      * Converts a given string to a number
+      * 
+      * @param {string} givenString A string that contains a floating-point number.
+      * @param {string} searchValue A string to search for. Allows regEx
+      * @param {string} replaceValue A string containing the text to replace for every successful match of searchValue in this string.
+      *
+      **/
+  export function convertStringToNum(givenString: string, searchValue: string, replaceValue: string): number {
+    const re = new RegExp(searchValue, "g");
+    return parseFloat((givenString).replace(re, replaceValue))
+  }
+}
+
+import { browser, by, element, ElementFinder, } from 'protractor';
+import { RestServiceHelper } from '../utils/restServiceHelper';
+import { TestCommon } from '../utils/testCommon';
+import { expect } from 'chai';
+
+
+export namespace SBMSCommon {
+
+  let authToken = "";
+  export const PREFIX_FOR_BANNER_MESSAGES = "Error: ";
+
+  export function navigateTo() {
+    return browser.get('/');
+  }
+
+  export function getSettlementDatePicker(): ElementFinder {
+    return element(by.id('settlmentDate_calendar'))
+  }
+  export function getBannerErrorMessage(): ElementFinder {
+    return element(by.id('app-app-layout-alert'))
+  }
+  export function getMandatoryFieldAndRangeToolTipErrorMessage(): ElementFinder {
+    return element(by.className('popover bs-popover-bottom'))
+  }
+  export function getSBMSPagesHeader(): ElementFinder {
+    return element(by.css('.content-header'))
+  }
+  export function getInvalidValueToolTipErrorMessage(): ElementFinder {
+    return element(by.css('.ngb-popover-window'))
+  }
+
+  /**
+   * Retrieves the label  that is associated with the element that was passed into the function.
+   * The label is found based on the supplied element's ID attribute
+   *
+   * @param elm - the web element that has the label associated with it.
+   */
+  export function getLabel(elm: ElementFinder) {
+    return elm.getAttribute('id')
+      .then((id) => {
+        return element(by.css('[for="' + id + '"]'))
+      })
+  }
+
+  /**
+    * Retrieves the label text that is associated with the element that was passed into the function.
+    * The label is found based on the supplied element's ID attribute
+    *
+    * @param elm - the web element that has the label associated with it.
+    */
+  export function getLabelText(elm: ElementFinder) {
+    return getLabel(elm).then((labelElement) => {
+      return labelElement.getText()
+    })
+  }
+
+  /**
+    * Retrieves the authentication token on initial login of the "super" user
+    */
+  export async function getAuthenticationToken() {
+    return authToken = await RestServiceHelper.getAuthToken(RestServiceHelper.getApiUrl() + "/sbms/auth/login")
+  }
+
+  /**
+    * Retrieves the current settlement Date from SBMS Common Service.
+    *
+    */
+  export async function getCurrentSettlementDate() {
+    await getAuthenticationToken()
+    const response = await RestServiceHelper.submitRequest(RestServiceHelper.getApiUrl() + "/sbms/SBMS/Common/getCurrentSettlementDate/", authToken)
+    expect(response.status, 'user is unable to get current settlement date').to.be.equal(200)
+    return TestCommon.convertDateToStringYYYYMMDD(new Date(response.body), "-")
+  }
+
+  /**
+    * Retrieves the settlement Date that exceeds the five day rule based on current settlement Date.
+    *@param numberOfSettlementDaysToExceed - number of settlement days to skip from current day, default is "6"
+    *NOTE: value to the parameter should be greater than or equal to default value to verify five day rule
+    */
+  export async function getFiveDayRuleExceededDate(numberOfSettlementDaysToExceed: number = 6) {
+    const currentSettlementDate = await getCurrentSettlementDate()
+    const getSettlementDate = RestServiceHelper.getApiUrl() + "/sbms/SBMS/Common/getPreviousSettlementDateByNumberOfDays/" + currentSettlementDate + "/" + numberOfSettlementDaysToExceed + ""
+    const response = await RestServiceHelper.submitRequest(getSettlementDate, authToken)
+    expect(response.status, 'Response does not return five day rule exceeded date').to.be.equal(200)
+    return new Date(response.body)
+  }
+
+  /**
+    * Retrieves the random settlement Date that is with in the five day rule based on current settlement Date.
+    */
+  export async function getDateWithInFiveDayRule() {
+    const currentSettlementDate = await getCurrentSettlementDate()
+    const randomNumber = Math.floor(Math.random() * 5) + 1
+    const getSettlementDate = RestServiceHelper.getApiUrl() + "/sbms/SBMS/Common/getPreviousSettlementDateByNumberOfDays/" + currentSettlementDate + "/" + randomNumber + ""
+    const response = await RestServiceHelper.submitRequest(getSettlementDate, authToken)
+    expect(response.status, 'Response does not return date with in five day rule').to.be.equal(200)
+    return new Date(response.body)
+  }
+}
+
+import { expect } from 'chai';
+import { browser } from 'protractor';
+import * as _ from 'lodash'
+import { Dictionary } from 'lodash';
+import { Service } from '../utils/enumeration'
+import * as jsonpath from 'jsonpath';
+import * as fetch from 'node-fetch';
+import * as base64 from 'base64-encode-decode';
+
+export namespace RestServiceHelper {
+
+    // The last response that we received
+    let lastResponse;
+    const HTTP_PREFIX = 'http://'
+    const encoded_endpoint = 'eyJ1c2VybmFtZSI6InN1cGVyIiwicGFzc3dvcmQiOiJzdXBlcjEifQ=='
+
+    /**
+      * Check the  http code status in response header.  Default expected value is 200
+      *
+      * @param res   - Http Response
+      **/
+    export function confirmResponseStatus(res: Response, statusCode: number = 200) {
+        return expect(res.status, 'Page not found, status code: ' + res.status).to.be.equal(statusCode);
+    }
+
+    /**
+    * Verify the response details.  Uses jsonpath (xpath like) to find expected value in response body.
+    *
+    * @param response   - Http Response
+    * @param response_paths   - key,value pair json paths
+    * @param expected   - rowsHash object where first column is the key and second column is the expected value
+    **/
+    export function confirmResponseDetails(response: Response, response_paths: Dictionary<string>, expected) {
+        Object.keys(expected)
+            // Check that the name we are looking up is present in our mapping
+            // This helps future-proof things, but just ignoring unknown names
+            .filter(key => response_paths.hasOwnProperty(key))
+            .forEach(key => {
+                const expectedValue = expected[key];
+                const path = response_paths[key];
+                // Using jsonpath, get the value from the body to compare against
+                // This must be in String form, since the data table is all strings
+                const value = jsonpath.value(response.body, path).toString();
+                expect(value).to.be.equal(expectedValue);
+            });
+    }
+
+    /**
+* Verify the response details.  Uses jsonpath (xpath like) to find expected value in response body.
+*
+    * @param endpoint  - endpoint for example 'login' along with payload (parameters passed as key, value pair)
+* @param service -  (Optional)-by default SBMS Service is used, since we have one service
+*@param response_paths   - key,value pair json paths
+* @param expected   - rowsHash object where first column is the key and second column is the expected value
+**/
+    export async function getResponseDetails(endPoint: string, service = Service.SBMS, authToken: string, JSONlocation: string) {
+        const resp = await submitRequest(getApiUrl(service) + endPoint, authToken)
+        confirmResponseStatus(resp);
+        const response = await getLastResponse();
+        return jsonpath.query(response, JSONlocation)
+    }
+
+    /**
+    * Get the URL for the service based on service name
+    *
+    * @param serviceName - (Optional)-by default SBMS Service is used, since we have one service
+    **/
+    export function getApiUrl(serviceName = Service.SBMS) {
+        const env: any = getEnv();
+        const apiurl: any = HTTP_PREFIX + env[serviceName];
+        return apiurl;
+
+    }
+
+    // TODO - Update this function to load url for given service based on jenkins parameter
+    // Override the url in env.json based on jenkins parameters
+    function getEnv() {
+        let env: any = {};
+        const envName: string = "sbms-local"; //browser.params.env.toLowerCase()
+        const environment = require('./resource/env.json');
+        env = environment[envName];
+        return env;
+    }
+
+    /**
+    * Get the authentication token for given username and password.
+    * by Default super is used to get the token from the auth service
+    *
+    * @param baseurl   - Base URL for the user-management-service.
+    * @param endpoint  - endpoint for example 'login' along with payload (parameters passed as key, value pair)
+    **/
+    export function getAuthToken(baseurl: string): Promise<string> {
+        return new Promise((resolve, reject) => {
+            const getTok = async () => {
+                const url = baseurl
+                const res = await fetch(url, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: base64.base64Decode(encoded_endpoint)
+                })
+                const json = await res.json();
+                resolve(json.token)
+            }
+            const getTheToken = async () => {
+                await getTok()
+                    .catch(error => console.log('fetch error============:', error));
+            }
+            getTheToken()
+        })
+    }
+    /**
+    * Submit HTTP Request of default Method Type GET.  Stores the response as member data lastResponse
+    *
+    * @param url   - Any url that does not need authentication token.
+    **/
+    export function get(url) {
+        lastResponse = fetch(url)
+            .then((res) => {
+                // Our response object allows us to decode the body as a JSON
+                // object, so let's do that
+                return res.json().then((body) => {
+                    // We only care about the status code, headers and body
+                    return {
+                        status: res.status,
+                        headers: res.headers.raw(),
+                        body: body
+                    };
+                });
+            });
+
+        return lastResponse;
+    }
+
+    /**
+    * Submit Http request.  Uses the already fetched authentication token and add to request header.
+    *
+    * @param url    - URL for the micro service along with endpoint and payload
+    * @param token  - authentication token
+    * @param reqMethod  - http method (GET | POST | PUT)
+    **/
+    export function submitRequest(url, token: string, reqMethod: string = "GET") {
+        lastResponse = fetch(url, {
+            method: reqMethod,
+            headers: {
+                'Authorization': token,
+                'Content-Type': 'application/json',
+            },
+        }).then((res) => {
+            // Our response object allows us to decode the body as a JSON
+            // object, so let's do that
+            return res.json().then((body) => {
+                // We only care about the status code, headers and body
+                return {
+                    status: res.status,
+                    headers: res.headers.raw(),
+                    body: body
+                };
+            });
+        });
+
+        return lastResponse;
+    }
+
+    // Get the last response that we received
+    function getLastResponse() {
+        return lastResponse;
+    }
+
+}
+
+
+/**
+ * Specifies the method used for identifying a row in an ag-grid webElement.
+ */
+export enum AgGridRowIdentifier {
+    RowId = "row-id",
+    RowIndex = "row-index",
+    Index = "index"
+}
+
+export enum Table {
+    Row = 'row',
+    Column = 'column'
+}
+
+export enum SortingOrder {
+    Ascending = 'ascending',
+    Descending = 'descending'
+}
+
+export enum Service {
+    SBMS = 'service-sbms'
+}
+
+export enum DateType {
+    StartDate = "startDate",
+    EndDate = "endDate",
+    Null = 'null'
+
+}
+
+export enum BidOrSubmit {
+    Bid = 'Bid',
+    Submit = 'Submit'
+}
+
+export enum RulesOrLimits {
+    Rules = 'rules',
+    Limits = 'limits'
+}
+
+export enum LimitType {
+    Bidding = 'bidding',
+    Outstanding = 'outstanding'
+}
+
+export enum DateTense {
+    Future = "FUTURE",
+    Today = "TODAY",
+    Past = "PAST"
+}
+
+export enum ElementState {
+    Enable = "enabled",
+    Disable = "disabled"
+}
+
+export enum Month_Mmm {
+    January = 'Jan',
+    February = 'Feb',
+    March = 'Mar',
+    April = 'Apr',
+    May = 'May',
+    June = 'Jun',
+    July = 'Jul',
+    August = 'Aug',
+    September = 'Sep',
+    October = 'Oct',
+    November = 'Nov',
+    December = 'Dec'
+}
+
+
+import { browser, by, element, ElementFinder } from 'protractor';
+import { TestCommon } from './testCommon'
+import { Month_Mmm } from './enumeration'
+
+export namespace CalendarPickerCommon {
+    const chai = require('chai')
+    const dirtyChai = require('dirty-chai')
+    const expect = chai.expect
+    chai.use(dirtyChai)
+
+    /**
+     * Returns the a specified day of the month from an exposed calendar date picker
+     * @param day - The day of the month to retrieve
+     * @returns - ElementFinder
+     * 
+     */
+    async function getCalendarPickerDayElement(day: number) {
+        //return element(by.xpath('//div[contains(@class, "ngb-dp-day")]/div[text()="' + day + '" and not(contains(@class, "outside"))]'))
+        const allElements = element.all(by.xpath('//div[contains(@class, "ngb-dp-day")]/*[text()=' + day + ']'))
+        if (await allElements.count() === 2 && day >= 23) {
+            return allElements.get(1);
+        } else {
+            return allElements.get(0);
+        }
+    }
+
+    /**
+    * Returns the Month Select box from an exposed calendar date picker
+    * @returns - ElementFinder
+    * 
+    */
+    function getCalendarPickerMonthSelect() {
+        return element.all(by.css('ngb-datepicker-navigation-select > select')).get(0)
+    }
+
+    /**
+    * Returns the Year Select box from an exposed calendar date picker
+    * @returns - ElementFinder
+    * 
+    */
+    function getCalendarPickerYearSelect() {
+        return element.all(by.css('ngb-datepicker-navigation-select > select')).get(1)
+    }
+
+    /**
+    * Gets the currently selected day of month from an exposed calendar date picker
+    * NOTE: Datepicker must be exposed on DOM
+    */
+    export async function getDatePickerDay() {
+        //return element(by.css(".bg-primary"))
+        if (await element(by.className('custom-day focused')).isPresent()) {
+            return element(by.className('custom-day focused'))
+        } else {
+            return element(by.css(".bg-primary"))
+        }
+    }
+
+    /**
+    * Gets the selected month and year from datepicker
+    * NOTE: Datepicker must be exposed on DOM
+    */
+    export function getDatePickerMntAndYear() {
+        return element.all(by.css('ngb-datepicker-navigation-select select'))
+    }
+
+    /**
+    * Gets the highlighted "today's date" from the calendar date picker, when no day is selected
+    * NOTE: Datepicker must be exposed on DOM
+    */
+    export async function getDatePickerTodayDay() {
+        //return element(by.css(".ngb-dp-day .active"))
+        if (await element(by.className('custom-day today')).isPresent()) {
+            return element(by.className('custom-day today'))
+        } else {
+            return element(by.css(".ngb-dp-day .active"))
+        }
+    }
+
+    /**
+    * Gets Selected Date from DatePicker
+    * NOTE: Datepicker must be exposed on DOM
+    */
+    export async function getSelectedDateFromDatePicker() {
+        let day = await (await getDatePickerDay()).getText()
+        let month = await getDatePickerMntAndYear().get(0).getAttribute('value')
+        const year = await getDatePickerMntAndYear().get(1).getAttribute('value')
+        if (day.length === 1) {
+            day = '0' + day
+        }
+        if (month.length === 1) {
+            month = '0' + month
+        }
+        return year + '-' + month + '-' + day
+    }
+
+    /**
+    * Gets todays Date from DatePicker
+    * NOTE: Datepicker must be exposed on DOM
+    */
+    export async function getTodaysDateFromDatePicker() {
+        let day = await (await getDatePickerTodayDay()).getText()
+        let month = await getDatePickerMntAndYear().get(0).getAttribute('value')
+        const year = await getDatePickerMntAndYear().get(1).getAttribute('value')
+        if (day.length === 1) {
+            day = '0' + day
+        }
+        if (month.length === 1) {
+            month = '0' + month
+        }
+        return year + '-' + month + '-' + day
+    }
+
+    /**
+     * Sets a calendar date picker to a specified day, month, and year using the date picker's controls.
+     * When using this function, you need to ensure that either:
+     * - the date picker is already displayed on the page;
+     * - OR you specify the elementFinder used to click / expose the date picker;
+     * @param day - day of month to set (e.g. "1", "2", "3", ... , "29", "30", "31")
+     * @param month - month of year to set in the format of Mmm (e.g. "Jan", "Feb", "Mar", "Apr", etc..)
+     * @param year - year to set (e.g. "1956", "2018", "2045", etc...)
+     * @param elm - Optional - Element to be clicked to expose underlying calendar date picker.
+     * 
+     */
+    export async function setCalendarDatePicker(day: string, month: string, year: string, elm?: ElementFinder) {
+        let currentSelectedYear: number;
+        //Check if an ElementFinder was specified for exposing the calendar date picker
+        if (elm) {
+            await TestCommon.confirmEnabledAndClick(elm);
+            await browser.waitForAngular();
+        }
+        //Ensure a calendar date picker is exposed on the page
+        await TestCommon.waitForElementToLoad(element(by.css('ngb-datepicker')), 1000, "No calendar date picker found in DOM.")
+        //This loop will ensure the year that was specified can be selected (only +/- 10 years from the currently selected dates are available)
+        do {
+            //get year currently selected in date picker
+            currentSelectedYear = parseInt(await TestCommon.getSelectedOption(getCalendarPickerYearSelect()), 10)
+            //if the currently selected year is more than 10 years from the desired year, then adjust the currently selected year by +/-10 years.  Otherwise select the desired year
+            if (currentSelectedYear - parseInt(year, 10) > 10) {
+                await TestCommon.selectOption(getCalendarPickerYearSelect(), (currentSelectedYear - 10).toString())
+            } else if (currentSelectedYear - parseInt(year, 10) < -10) {
+                await TestCommon.selectOption(getCalendarPickerYearSelect(), (currentSelectedYear + 10).toString())
+            } else {
+                await TestCommon.selectOption(getCalendarPickerYearSelect(), year);
+            }
+        } while (Math.abs(currentSelectedYear - parseInt(year, 10)) > 10)
+        // Ensure provided select the desired month
+        expect(TestCommon.getAllValuesInAssociativeArray(Month_Mmm), "Invalid Month specified.  Month must have format of MMM.  E.g. Jan, Feb, Mar, etc")
+            .contains(month.charAt(0).toUpperCase() + month.slice(1).toLowerCase())
+        await TestCommon.selectOption(getCalendarPickerMonthSelect(), month.charAt(0).toUpperCase() + month.slice(1).toLowerCase());
+        // click on the desired day of month
+        await (await getCalendarPickerDayElement(parseInt(day, 10))).click();
+        await browser.waitForAngular();
+    }
+}
+
+import { expect } from 'chai';
+import { browser, by, element, promise, ElementFinder, Locator, ElementArrayFinder } from 'protractor';
+import { AgGridRowIdentifier, SortingOrder, Table } from './enumeration';
+import { TestCommon } from './testCommon'
+import { SBMSCommon } from './sbmsCommon';
+
+export namespace AgGridCommon {
+
+  /**
+    * Check if a Input cell is editable.  Clicks on the cell identified by the ColID / rowNum
+    * coordinates, then checks to see if it results in an editable field.
+    *
+    * @param grid - the grid that containing the cell to check
+    * @param colID - Name of the column to check
+    * @param rowNum - By default, the function will check the first row of a column.
+    **/
+  export async function confirmCellIsEditable(grid: ElementFinder, colID: string, rowNum: number = 0) {
+    await getGridCell(grid, rowNum, colID).click()
+    await browser.waitForAngular()
+    await TestCommon.waitForElementVisibility(element(by.tagName('ami-grid-reactive-cell-editor')))
+  }
+
+  /**
+   * Clicks on the cell at the supplied column / row coordinates and checks if it is not editable.
+   *
+   * @param grid - the grid that containing the cell to check
+   * @param colID  - Name of the column to check
+   * @param rowNum - By default, the function will check the first row of a column.
+   **/
+  export function confirmCellIsNotEditable(grid: ElementFinder, colID: string, rowNum: number = 0) {
+    return getGridCell(grid, rowNum, colID).click().then(() =>
+      TestCommon.confirmCSSApplied(getGridCell(grid, rowNum, colID), 'ag-cell-not-inline-editing')
+    )
+  }
+
+  /**
+  * Check if a cell is read-. Clicks on the cell identified by the ColID / rowNum
+  * coordinates, then checks to see if it results in identifed as being read-only.
+  *
+  * @param grid - the grid that containing the cell to check
+  * @param colID   - Name of the column to check
+  * @param rowNum - By default, the function will check the first row of a column.
+  **/
+  export async function confirmCellIsReadOnly(grid: ElementFinder, colID: string, rowNum: number = 0) {
+    await getGridCell(grid, rowNum, colID).click()
+    await browser.waitForAngular()
+    await TestCommon.confirmCSSApplied(getGridCell(grid, rowNum, colID), 'read-only')
+  }
+
+  //REVISIT.  This checks if an array's elements are a subset of values in another array.
+  //Technically, not ag-grid specific.  Might be a TestCommon function.
+  /**
+    * Checks if an array has items that are only in filter Criteria list
+    *
+    * @param arr   - array of values from column
+    * @param filterCriteria  - The filter criteria list is a constant that comes from reference data.
+    *                          Eventually the list should be pulled from Database or it should be part of integration test
+    **/
+  export function confirmColumnFiltering(arr: string[], filterCriteria: string[]) {
+    for (let i = 0; i < arr.length; ++i) {
+      expect(filterCriteria.includes(arr[i]), arr[i] + " not found in [" + filterCriteria + "]").to.equal(true)
+    }
+  }
+
+  //REVISIT - Does not allow caller to specify number of rows to check
+  /**
+  * Function scrolls through rows and checks the custom display sort order of a column by comparing the
+  * position of a values in sortOrder against the values from the table.
+  *
+  * Note: This can only be used where column value are not grouped.
+  *       A proposed work around is to filter on column that is grouped by.
+  *
+  * Note: @param sortOrder values should be coming from database
+  *
+  * @param grid - the ag-grid containing the column order to validate
+  * @param colId - column Id to check
+  * @param sortOrder - Specify the sort order to check against. It should be a string array
+  * @param ascOrdesc - Specify the sort order to check, asc = ascending an desc = descending
+  **/
+  export function confirmCustomSortingOnTxt(grid: ElementFinder, colId: string, sortOrder: string[], ascOrdesc = SortingOrder.Ascending) {
+    return scrollCompleteGridAndGetText(grid, colId)
+      .then((values) => {
+        const uniqueValues = (TestCommon.getUniqueValuesFromArray(values))
+        const getValuesFromSortOrder = []
+        sortOrder.forEach((key) => {
+          uniqueValues.forEach((item) => {
+            if (key === item) {
+              getValuesFromSortOrder.push(item)
+            }
+          })
+        })
+        if (ascOrdesc === SortingOrder.Descending) {
+          getValuesFromSortOrder.reverse()
+        }
+        expect(uniqueValues, "Column not sorted by display sequence. \nExpected: " + getValuesFromSortOrder + " \nActual: " + uniqueValues + "\n").to.be.deep.equal(getValuesFromSortOrder)
+      })
+  }
+
+
+  /**
+   * Confirm that grids header labels match the expected text values, in the expected order
+   * @param grid   - the grid containing the header labels to check
+   * @param expectedLabels - the expected text values of the labels
+   * 
+   **/
+  export async function confirmGridHeader(grid: ElementFinder, expectedLabels: string[]) {
+    const gridHeaderLabels: string[] = []
+    return grid.all(by.css('.ag-header-cell-text'))
+      .then(async (gridHeaderElements) => {
+        for (let i = 0; i < gridHeaderElements.length; ++i) {
+          gridHeaderLabels.push(await gridHeaderElements[i].getText());
+        }
+        expect(gridHeaderLabels, "Grid Header labels do not match expected values\n").to.be.deep.equal(expectedLabels)
+      })
+  }
+
+  //REVISIT - does not allow caller to specify number of rows to check
+  /**
+   * Function checks the ascending or descending sorting of a column
+   *
+   * @param grid - ag-grid containing the column to validate
+   * @param colId - column Id to check
+   * @param ascOrdesc - Specify the sort order to check, asc = ascending an desc = descending
+   **/
+  export function confirmSortingOnTxt(grid: ElementFinder, colId: string, ascOrdesc = SortingOrder.Ascending) {
+    return scrollCompleteGridAndGetText(grid, colId)
+      .then((val) => {
+        const sorted = val.concat().sort((a, b) => {
+          a = a.toLowerCase();
+          b = b.toLowerCase()
+          if (a === b) {
+            return 0
+          }
+          return a < b ? -1 : 1
+        })
+        if (ascOrdesc === SortingOrder.Descending) {
+          sorted.reverse()
+        }
+        expect(TestCommon.getUniqueValuesFromArray(val), "Not sorted. \nExpected: " + TestCommon.getUniqueValuesFromArray(sorted) + "\nActual: "
+          + TestCommon.getUniqueValuesFromArray(val) + "\n").to.be.deep.equal(TestCommon.getUniqueValuesFromArray(sorted))
+      })
+  }
+
+  /**
+  * Check the sort order of the dates in a grid
+  *
+  * @param grid - the grid that containing the cells to check
+  * @param colID - Name of the column to check
+  * @param orderType - the orderType(ascending or descending) to check.
+  **/
+  export async function confirmSortOderOfDates(grid: ElementFinder, colID: string, orderType: string) {
+    const datesAsString = await getAllTextInColumn(grid, colID)
+    for (let i: number = 0; i < datesAsString.length - 1; i++) {
+      const currentRowDate = new Date(datesAsString[i]).getTime()
+      const nextRowDate = new Date(datesAsString[i + 1]).getTime()
+      switch (orderType) {
+        case SortingOrder.Descending: {
+          expect(currentRowDate, "Dates are not sorted in descending order :CurrentRowDate:" + currentRowDate + " nextRowDate:" + nextRowDate).to.be.greaterThan(nextRowDate)
+          break;
+        }
+        case SortingOrder.Ascending: {
+          expect(currentRowDate, "Dates are not sorted in ascending order. CurrentRowDate:" + currentRowDate + " nextRowDate:" + nextRowDate).to.be.lessThan(nextRowDate)
+          break;
+        }
+      }
+    }
+  }
+
+  /**
+ * Function enters a value into a grid filter input box of a specified column
+ *
+ * @param grid - the ag-grid containing the filter input box
+ * @param text - the text to enter into the filter input box
+ * @param columnLabel - the text of the column label containing the filter input box
+ **/
+  export async function enterColumnFilterValue(grid: ElementFinder, text: string, columnLabel: string) {
+    const columnLabels = await getGridHeader(grid).getText()
+    if ((columnLabels.indexOf(columnLabel)) < 0) {
+      expect(false, 'Cant find the Column Label: ' + columnLabel).to.equal(true)
+    } else {
+      const elm = await getColumnFilterInputByLabel(grid, columnLabel)
+      await TestCommon.enterText(elm, text)
+    }
+  }
+
+  /**
+     * Search a specific column, in an ag-grid, for ALL cells that matches the search text.
+     * Returns a numeric array of the row numbers for ALL cells in the column that
+     * match the search text. An empty arrar is returned if the search text is not found.
+     *
+     * NOTE: The 'row-number' that is returned is dependent on AgGridRowIdentifier that was specified.
+     * @param searchText - the search string to match a cells contents
+     * @param grid - ag-grid containing the cells to check
+     * @param colID - the col-id of the column containing the cells to search
+     * @param rowType - enum AgGridRowIdentifier, the row identification type used to locate the row
+     */
+  export async function findAllCellsInColumnWithMatchingText(searchText: string, grid: ElementFinder, colId: string, rowIdMethod: AgGridRowIdentifier) {
+    const rowCount = (await getAllGridRows(grid)).length
+    const rows: number[] = []
+    for (let i = 0; i < rowCount; ++i) {
+      const allRows = await getAllGridRows(grid)
+      const rowNum = await allRows[i].getAttribute(rowIdMethod)
+      await scrollGridRowIntoView(grid, rowNum, colId, rowIdMethod)
+      const cellText = await getGridCell(grid, rowNum, colId, rowIdMethod).getText()
+      if (cellText === searchText) {
+        rows.push(parseInt(rowNum, 10));
+      }
+    }
+    return rows
+  }
+
+
+  /**
+   * Search a specific column, in an ag-grid, for a cell that matches the search text.
+   * Returns a Promise that evaluates to the 'row-number' of the FIRST cell in the column
+   * matching the search text. '-1' is returned if the search text is not found.
+   *
+   * NOTE: The 'row-number' that is returned is dependent on AgGridRowIdentifier that was specified.
+   * @param searchText - the search string to match a cells contents
+   * @param grid - ag-grid containing the cells to check
+   * @param colID - the col-id of the column containing the cells to search
+   * @param rowType - enum AgGridRowIdentifier, the row identification type used to locate the row
+   */
+  export async function findTextInColumnCell(searchText: string, grid: ElementFinder, colId: string, rowIdMethod: AgGridRowIdentifier) {
+    const rowCount = (await getAllGridRows(grid)).length
+    for (let i = 0; i < rowCount; ++i) {
+      const allRows = await getAllGridRows(grid)
+      const rowNum = await allRows[i].getAttribute(rowIdMethod)
+      await scrollGridRowIntoView(grid, rowNum, colId, rowIdMethod)
+      const cellText = await getGridCell(grid, rowNum, colId, rowIdMethod).getText()
+      if (cellText === searchText) {
+        return parseInt(rowNum, 10)
+      }
+    }
+    return -1
+  }
+
+  /**
+   * Retrieves the SELECT element that is currently active in an ag-grid.
+   * NOTE: active means that the SELECT element has been exposed in the cell (i.e. the cell has been clicked)
+   *
+   * @param grid - The ag-grid containing the exposed Select cell editor control
+   */
+  export function getActiveSelectInGrid(grid: ElementFinder) {
+    return grid.element(by.css('ami-grid-reactive-cell-editor select'))
+  }
+
+  /**
+   * Retrieves the INPUT element that is currently active in an ag-grid.
+   * NOTE: active means that the INPUT element has been exposed in the cell (i.e. the cell has been clicked)
+   *
+   * @param grid - The ag-grid containing the exposed Input cell editor control
+   */
+  export function getActiveInputInGrid(grid: ElementFinder) {
+    return grid.element(by.css('ami-grid-reactive-cell-editor input'))
+  }
+
+  /**
+  * Gets all text that are loaded on DOM, from a column in AG-Grid.
+  *
+  * @param grid - the ag-grid containing the column to retrieve from
+  * @param colId - the col-id of the column that contains the cell to retrieve
+  * @param attName - Attribute Name to get. Ex: values, innerText, comp-id..etc
+  **/
+  export function getAllAttributesInColumn(grid: ElementFinder, colId: string, attName: string) {
+    return grid.all(by.css(`.ag-body-container [col-id="${colId}"]`)).getAttribute(attName)
+  }
+
+  //REVISIT this gets from all rows, effectively all cells in grid
+  /**
+   * Gets all text that are loaded on DOM, from a row in AG-Grid.
+   * @param grid - the ag-grid containing the rows to retrieve from
+   * @param attName - Attribute Name to get. Ex: values, innerText, row-index..etc
+   **/
+  export function getAllAttributesInRow(grid: ElementFinder, attName: string) {
+    return grid.all(by.css('.ag-body-container [role="row"]')).getAttribute(attName)
+  }
+
+  export function getAllColumnHeaderElements() {
+    return element.all(by.css('.ag-header-cell-sortable'))
+  }
+
+  /**
+   * Returns all cells from a grid column
+   * @param grid : the grid that is being check
+   * @param colId : Column ID of the column being returned
+   */
+  export function getAllDataCellsInColumn(grid: ElementFinder, colId: string) {
+    return grid.all(by.css('div[role="row"] > [col-id="' + colId + '"]'));
+  }
+
+  export function getAllGridFilterMenuCheckbox(colId: string, filterNum: string) {
+    return element(by.id(`listFilter${TestCommon.capitalizeFirstLetter(colId)}Option${filterNum}`))
+  }
+
+  /**
+  * Retrieve all rows in the ag-grid on the page.
+  *
+  * @param grid - the grid containing the rows to retrieve
+  **/
+  export async function getAllGridRows(grid: ElementFinder) {
+    return grid.all(by.css('.ag-body-container > [role="row"]'))
+  }
+
+  /**
+  * Gets all text that are loaded on DOM, from a column in AG-Grid.
+  *
+  * @param grid - the ag-grid containing the column to retrieve from
+  * @param colId - the col-id of the column that contains the cell to retrieve
+  **/
+  export function getAllTextInColumn(grid: ElementFinder, colId: string): promise.Promise<string> {
+    return grid.all(by.css(`.ag-body-container [col-id="${colId}"]`)).getAttribute('innerText')
+  }
+
+
+  export async function getColumnFilterInputByLabel(grid: ElementFinder, columnLabel: string) {
+    return element(by.xpath('((//div[@class="ag-floating-filter-body"])[' + (await AgGridCommon.getColumnPostionByLabel(grid, columnLabel) + 1) + '])/descendant::input'))
+  }
+
+
+  /**
+  * Function returns the col-id attribute of a supplied column header label.
+  * If the column cannot be found, an exception is thrown.
+  *
+  * @param grid - the ag-grid containing the columns to check
+  * @param columnLabel - the column header label text to locate
+  **/
+  export async function getColumnIDByLabel(grid: ElementFinder, columnLabel: string) {
+    const columnLabels = await getGridHeader(grid).getText()
+    const position = columnLabels.indexOf(columnLabel)
+    if (position < 0) {
+      expect(false, 'Cant find the Column Label: ' + columnLabel).to.equal(true)
+    }
+    return await getAllColumnHeaderElements().get(position).getAttribute('col-id')
+  }
+
+  /**
+   * Function returns the column position in an ag-grid based on a supplied column header label.
+   * If the column cannot be found, an exception is thrown.
+   *
+   * @param grid - the ag-grid containing the columns to check
+   * @param columnLabel - The column headed label text to locate
+   **/
+  export async function getColumnPostionByLabel(grid: ElementFinder, columnLabel: string) {
+    const columnLabels = await getGridHeader(grid).getText()
+    const position = columnLabels.indexOf(columnLabel)
+    if (position < 0) {
+      expect(false, 'Cant find the Column Label: ' + columnLabel).to.equal(true)
+    }
+    return position
+  }
+
+  export async function getFilterIconByColumnLabel(grid: ElementFinder, columnLabel: string) {
+    return element(by.xpath('((//div[@class="ag-floating-filter-body"])[' + (await AgGridCommon.getColumnPostionByLabel(grid, columnLabel) + 1) + '])/following-sibling::div'))
+  }
+
+
+  export function getFilterMenuOptions() {
+    return element.all(by.css(".ami-list-filter-options .ami-list-filter-item-label"))
+  }
+
+
+  /**
+   * Retrieve the cell from an ag-grid at the specified row and column.
+   *
+   * NOTE: if no row identification type is specified, row-index is used by default
+   *
+   * @param grid - the ag-grid containing the cell to retrieve
+   * @param rowNum - the row number that contains the cell to retrieve
+   * @param colID - the col-id of the column that contains the cell to retrieve.
+   * @param rowType - (Optional) enum AgGridRowIdentifier, the row identification type used to locate the row
+   **/
+  export function getGridCell(grid: ElementFinder, rowNum: number, colID: string, rowType = AgGridRowIdentifier.RowIndex) {
+    return grid.element(by.css('.ag-body-container > [' + rowType + '="' + rowNum + '"] > [col-id="' + colID + '"]'));
+  }
+
+
+
+  /**
+  * Get label of the given column in a grid
+  * @param grid - the grid that is being referenced
+  * @param colHeaderID - Column header ID containing the label to return
+  */
+  export function getGridColumnHeaderLbl(grid: ElementFinder, colHeaderID: string) {
+    return grid.element(by.css('[col-id="' + colHeaderID + '"] .ag-header-cell-label'))
+  }
+
+  /**
+  * returns the sorting direction ('Descending' or 'Ascending') of the given column in a grid
+  *
+  * @param grid - the grid containing the column headers
+  * @param colHeaderID - Column header ID that is being checked
+  */
+  export function getGridColumnHeaderSortDirection(grid: ElementFinder, colHeaderID: string) {
+    return grid.element(by.css('[col-id="' + colHeaderID + '"] .ag-cell-label-container')).getAttribute('class')
+      .then((classes) => {
+        if (classes.includes('ag-header-cell-sorted-asc')) {
+          return SortingOrder.Ascending
+        } else if (classes.includes('ag-header-cell-sorted-desc')) {
+          return SortingOrder.Descending
+        }
+      })
+  }
+
+  /**
+  * Get sorting order priority of the given column in a grid. The priority is denoted as
+  * a number in paranthesis within the column header.
+  * @param grid - the ag-grid containing the column headers to check
+  * @param colHeaderID - Column header ID that is being checked
+  */
+  export function getGridColumnHeaderSortPriority(grid: ElementFinder, colHeaderID: string) {
+    return grid.element(by.css('[col-id="' + colHeaderID + '"] .ag-sort-order'));
+  }
+
+  /**
+  * Retrieve the header row from an ag-grid.
+  *
+  * @param grid - the ag-grid containing the header to retrieve
+  **/
+  export function getGridHeader(grid: ElementFinder) {
+    return grid.all(by.css(".ag-header-cell-text"));
+  }
+
+  /**
+  * Retrieve a row from an ag-grid, using the specified row identification type.
+  *
+  * NOTE: if no row identification type is specified, row-index is used by default
+  *
+  * @param grid - the ag-grid containing the row to retrieve
+  * @param rowNum - the number of the row to retrieve from the ag-grid
+  * @param rowType - (Optional) enum AgGridRowIdentifier, the row identification type used to locate the row
+  **/
+  export function getGridRow(grid: ElementFinder, rowNum: number, rowType = AgGridRowIdentifier.RowIndex) {
+    return grid.element(by.css('.ag-body-container > [' + rowType + '="' + rowNum + '"]'));
+  }
+
+  /**
+  * Retrieve a row from an ag-grid, using the specified row identification type.
+  *
+  * NOTE: if no row identification type is specified, row-index is used by default
+  *
+  * @param grid - the ag-grid containing the row to retrieve
+  * @param rowNum - the number of the row to retrieve from the ag-grid
+  * @param rowType - (Optional) enum AgGridRowIdentifier, the row identification type used to locate the row
+  **/
+  export function getGridRowCells(grid: ElementFinder, rowNum: number, rowType = AgGridRowIdentifier.RowIndex) {
+    return grid.all(by.css('.ag-body-container > [' + rowType + '="' + rowNum + '"] > div'));
+  }
+
+
+  export function getSelectAllFilterOption(colId: string) {
+    return element(by.id(`listFilter${TestCommon.capitalizeFirstLetter(colId)}SelectAll`))
+  }
+
+  /**
+ * Function gets all the cell values, from the specified column, in a grid. By default, function scrolls through first 200 rows
+ *
+ * Note 1: If the maxRowsToCheck exceeds the acutal number of rows in a table, the code will still work.
+ *       maxRowsToCheck does not have to be equal or less than actual rows in a table.
+ *       The bigger the table, the longer it will take to fetch text. Choosing smaller dataset is recommended
+ *
+ * @param grid - the ag-grid to scroll though
+ * @param maxRowsToCheck   - number of rows to check in a table
+ * @param colId - column from which you need the values
+ **/
+  export async function scrollCompleteGridAndGetText(grid: ElementFinder, colId: string, maxRowsToCheck: number = 200) {
+    const allRowIndexPromise = []
+    const allTextPromise = []
+
+    const result = await getGridRow(grid, 0).isPresent()
+    if (result === false) {
+      expect(false, 'No Data in the Table: ' + result).to.equal(true)
+    } else {
+      for (let i = 0; i <= maxRowsToCheck; i += 15) {
+        const rowIndexPromise = scrollEntireGridGetColumnAttr(grid, i, colId, 'row-index', Table.Row).then((rIndex) => rIndex)
+        allRowIndexPromise.push(rowIndexPromise)
+      }
+      return Promise.all(allRowIndexPromise)
+        .then((rowIndex) => {
+          const allRowIndex = (TestCommon.getUniqueValuesFromArray([].concat.apply([], rowIndex)).filter(Boolean)).sort((a, b) => { return a - b })
+          for (let i = (allRowIndex.length - 1); i >= 0; i--) {
+            const textPromise = scrollGridRowIntoView(grid, i, colId).then(() => getGridCell(grid, i, colId).getText().then((text) => text))
+            allTextPromise.push(textPromise)
+          }
+          return Promise.all(allTextPromise)
+            .then((textArray) => {
+              return textArray.reverse()
+            })
+        })
+    }
+  }
+
+
+  /**
+  * Function scrolls to a given row
+  * and gets all the column values available on DOM from a table after scroll
+  * assert ignore(catch) - if the specified row number is not available, then ignore.
+  *
+  * @param grid - the grid to scroll through
+  * @param rowNum   - row number
+  * @param colID - column from which you need the values
+  * @param attName - Attribute Name to get. Ex: values, innerText, row-index..etc
+  * @param fromWhere - By default, attributes are fetched from Table.Row. Can also be set to Table.Column to fetch column attributes
+  **/
+
+  export function scrollEntireGridGetColumnAttr(grid: ElementFinder, rowNum: number, colId: string, attName: string, fromWhere = Table.Row) {
+    return scrollGridRowIntoView(grid, rowNum, colId)
+      .then(() => {
+        if (fromWhere === Table.Column) {
+          return getAllAttributesInColumn(grid, colId, attName)
+            .then((val) => {
+              return val
+            })
+        } else if (fromWhere === Table.Row) {
+          return getAllAttributesInRow(grid, attName)
+            .then((val) => {
+              return val
+            })
+        }
+      }).catch(() => {
+      })
+  }
+
+  /**
+  * Function gets all the cell values, from the specified column, in a grid. By default, function scrolls through first 200 rows
+  *
+  * Note 1: If the maxRowsToCheck exceeds the acutal number of rows in a table, the code will still work.
+  *       maxRowsToCheck does not have to be equal or less than actual rows in a table.
+  *       The bigger the table, the longer it will take to fetch text. Choosing smaller dataset is recommended
+  *
+  * @param grid - the ag-grid to scroll through
+  * @param maxRowsToCheck   - number of rows to check in a table
+  * @param colId - column from which you need the values
+  **/
+  export async function scrollGridAndGetAllRows(grid: ElementFinder, colId: string, maxRowsToCheck: number = 200) {
+    const allRowIndexpromise = []
+    const allRowPromise = []
+
+    const result = await getGridRow(grid, 0).isPresent()
+    if (result === false) {
+      expect(false, 'No Data in the Table: ' + result).to.equal(true)
+    } else {
+      for (let i = 0; i <= maxRowsToCheck; i += 15) {
+        const rowIndexpromise = scrollEntireGridGetColumnAttr(grid, i, colId, 'row-index', Table.Row).then((rIndex) => rIndex)
+        allRowIndexpromise.push(rowIndexpromise)
+      }
+      return Promise.all(allRowIndexpromise)
+        .then((rowIndex) => {
+          const allRowIndex = (TestCommon.getUniqueValuesFromArray([].concat.apply([], rowIndex)).filter(Boolean)).sort((a, b) => { return a - b })
+          for (let i = (allRowIndex.length - 1); i >= 0; i--) {
+            const rowPromise = scrollGridRowIntoView(grid, i, colId).then(() => getGridRow(grid, i))
+            allRowPromise.push(rowPromise)
+          }
+          return Promise.all(allRowPromise)
+            .then((textArray) => {
+              return textArray.reverse()
+            })
+        })
+    }
+  }
+
+  /**
+  * Ensures a row / cell contained in an ag-grid is in the visible view and will scroll it into view if needed.
+  *
+  * NOTE: if no row identification type is specified, row-index is used by default
+  *
+  * @param grid - the ag-grid to scroll
+  * @param rowNum - the number of the row you want to ensure is visible in the viewport
+  * @param col - the col-id of the column to ensure is visible in the viewport
+  * @param rowType - (Optional) enum AgGridRowIdentifier the row identification type to be used to identify the row
+  **/
+  export function scrollGridRowIntoView(grid: ElementFinder, rowNum: number, col: string, rowType = AgGridRowIdentifier.RowIndex) {
+    const elm = grid.element(by.css('[' + rowType + '="' + rowNum + '"] [col-id="' + col + '"]'));
+    return browser.executeScript("arguments[0].scrollIntoView(true);", elm.getWebElement());
+  }
+
+  /**
+  * Function selects the user defined option(can select more than one option) from a filter menu list from
+  * a user specified column
+  *
+  * Note: This works only for checkboxed filter menu,
+  * this can/needs to be augmented to handle select filtermenu
+  *
+  * @param grid - the ag-grid containing the column filter to set
+  * @param filterValue - Options to select from filter menu list
+  * @param columnLabel - Specify the column label from which to be filtered
+  **/
+  export async function selectColumnAndFilterValue(grid: ElementFinder, filterValue: string[], columnLabel: string) {
+    const columnLabels = await getGridHeader(grid).getText()
+    if ((columnLabels.indexOf(columnLabel)) < 0) {
+      expect('Cant find the Column Label: ' + columnLabel).to.equal(true)
+    } else {
+      const elm = await getFilterIconByColumnLabel(grid, columnLabel)
+      await elm.click()
+      const columnId = await getAllColumnHeaderElements().get((columnLabels.indexOf(columnLabel))).getAttribute('col-id')
+      const filterOptions = await getFilterMenuOptions().getText()
+      await getSelectAllFilterOption(columnId).click()
+      for (let i = 0; i < filterValue.length; i++) {
+        if ((filterOptions.indexOf(filterValue[i].trim())) < 0) {
+          expect(false, 'Cant find the Filter: ' + filterValue[i]).to.equal(true)
+        } else {
+          await getAllGridFilterMenuCheckbox(columnId, (filterOptions.indexOf(filterValue[i].trim())).toString()).click()
+        }
+      }
+    }
+  }
+
+  /**
+  * Sort using a specified column in the ag-grid by clicking on the header cell for the column
+  *
+  * @param grid - the ag-grid containing the column header to sort
+  * @param headerID - the col-id of the header column you want to sort on.
+  **/
+  export function sortOnGridColumnHeader(grid: ElementFinder, headerID: string) {
+    return grid.element(by.css('[col-id="' + headerID + '"].ag-header-cell')).click();
+  }
+}
+
+// Protractor configuration file, see link for more information
+// https://github.com/angular/protractor/blob/master/lib/config.ts
+
+const {
+    SpecReporter
+} = require('jasmine-spec-reporter');
+
+
+exports.config = {
+    allScriptsTimeout: 30000,
+    specs: [
+        './e2e/**/*.feature'
+    ],
+    plugins: [{
+        package: 'protractor-multiple-cucumber-html-reporter-plugin',
+        options: {
+            automaticallyGenerateReport: true,
+            removeExistingJsonReportFile: true,
+            removeOriginalJsonReportFile: true,
+            reportPath: 'e2e/reports/html'
+        }
+    }],
+    capabilities: {
+        'browserName': 'chrome',
+        'chromeOptions': {
+            'args': ['--disable-extensions', '--allow-running-insecure-content', '--test-type', '--start-maximized']
+        }
+    },
+    directConnect: true,
+    baseUrl: 'http://localhost:4200/',
+    framework: 'custom', //jasmine
+    frameworkPath: require.resolve('protractor-cucumber-framework'),
+    jasmineNodeOpts: {
+        showColors: true,
+        defaultTimeoutInterval: 30000,
+        print: function () {}
+    },
+    cucumberOpts: {
+        // require step definitions
+        require: ['./e2e/**/*.steps.ts'],
+        tags: [],
+        strict: true,
+        format: [
+            'pretty:e2e/reports/summary.txt',
+            'json:e2e/reports/summary.json'
+        ],
+        dryRun: false,
+        compiler: []
+    },
+    onPrepare() {
+        require('ts-node').register({
+            project: 'e2e/tsconfig.e2e.json'
+        });
+        //jasmine.getEnv().addReporter(new SpecReporter({ spec: { displayStacktrace: true } }));
+    }
+};
+
+
+# INSTALL 
+After retrieving the code from the git repository, run the following command in gitbash from the main-ui folder:
+```
+npm install
+```
+
+## Webdriver Update
+This command usually only needs to be executed once, unless newer versions of the browser drivers are released:
+```
+./nodes_modules/protractor/bin/webdriver-manager update --proxy http://10.1.66.111:8080 --ignore_ssl 
+```
+
+# Running E2E tests
+Enter the following command to run all E2E tests
+```
+./node_modules/protractor/bin/protractor
+```
+To run tests with a given tag use:
+```
+./node_modules/protractor/bin/protractor --cucumberOpts.tags='@LOGIN or @AMI-578' --disableChecks
+```
+The above example would run all tests tagged with @LOGIN or @AMI-578
+
+To exclude test with a given tage use:
+```
+./node_modules/protractor/bin/protractor --cucumberOpts.tags='not(@defect or @ignore)' --disableChecks
+```
+The above command would run all tests except tests tagged with @defect or @ignore
+
+
+
+
+
+
