@@ -1,0 +1,439 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        
+        {
+            "name": "Protractor Debugger",
+            "request": "launch",
+            "type": "node",
+            "program": "${workspaceRoot}/node_modules/protractor/bin/protractor",
+            "args": ["protractor.conf.js"],
+            "protocol": "inspector",
+            "cwd": "${workspaceRoot}",
+            "sourceMaps": true,
+            "runtimeExecutable": null,
+            "outFiles": [ "${workspaceRoot}/bin" ]
+            
+        },
+        {
+            "name": "Protractor",
+            "request": "launch",
+            "type": "node",
+            "program": "${workspaceRoot}/node_modules/protractor/bin/protractor",
+            "args": ["protractor.conf.js"],
+            // "protocol": "inspector",
+            "cwd": "${workspaceRoot}",
+            "sourceMaps": true,
+            "runtimeExecutable": null,
+            "outFiles": [ "${workspaceRoot}/bin" ]
+            
+        }
+
+    ]
+}
+
+{
+	"folders": [
+		{
+			"path": "."
+		}
+	],
+	"settings": {
+		"cucumberautocomplete.steps": [
+			"e2e/steps/**/*.ts"
+		],
+		"cucumberautocomplete.syncfeatures": "e2e/features/*feature",
+		"cucumberautocomplete.strictGherkinCompletion": true,
+		"cucumberautocomplete.smartSnippets": true,
+		"cucumberautocomplete.stepsInvariants": true,
+		"workbench.iconTheme": "vscode-icons",
+		
+		"extensions": {
+			"recommendations": [
+				"robertohuertasm.vscode-icons",
+				"HookyQR.beautify",
+				"streetsidesoftware.code-spell-checker",
+				"alexkrechik.cucumberautocomplete",
+				"Blodwynn.featurehighlight",
+				"donjayamanne.githistory",
+				"xabikos.jasminesnippets",
+				"eg2.vscode-npm-script",
+				"deerawan.vscode-protractor-snippets",
+				"stevejpurves.cucumber",
+				"SonarSource.sonarlint-vscode",
+				"eg2.tslint",
+				"robertohuertasm.vscode-icons"
+			]
+		},
+		"launch": {
+			"configurations": [
+				{
+					"name": "Protractor Debugger",
+					"request": "launch",
+					"type": "node",
+					"program": "${workspaceRoot}/node_modules/protractor/bin/protractor",
+					"args": [
+						"protractor.conf.js"
+					],
+					"protocol": "inspector",
+					"cwd": "${workspaceRoot}",
+					"sourceMaps": true,
+					"runtimeExecutable": null,
+					"outFiles": [
+						"${workspaceRoot}/bin"
+					]
+				},
+				{
+					"name": "Protractor",
+					"request": "launch",
+					"type": "node",
+					"program": "${workspaceRoot}/node_modules/protractor/bin/protractor",
+					"args": [
+						"protractor.conf.js"
+					],
+					"cwd": "${workspaceRoot}",
+					"sourceMaps": true,
+					"runtimeExecutable": null,
+					"outFiles": [
+						"${workspaceRoot}/bin"
+					]
+				}
+			]
+		}
+	}
+}
+
+@Library('ami-pipeline') _
+
+// Global Groovy variables
+
+def pipelineParams = [
+	// Name of the project this pipeline builds
+	projectName : "main-ui",
+
+	// PaaS project to use for automated tests
+	
+
+	// can be used to disable the test stage
+	testStageDisabled : false,
+
+	// set yo true to force the build to continue even if test stage fails. Note that if this is set to
+	// true, the Test stage will appear successful, even if there are test failures
+	continueOnTestFailure : false,
+
+	// can be used to disable auto-test deployment and e2e test stages
+	e2eTestStageDisabled : false,
+
+	// can be used to enable e2e testing on branches other than master
+	e2eTestOnBranches : false,
+
+	// Can be used to enable SonarQube scans on branches other than master
+	sonarScanOnBranches : false,
+
+	// Database configuration for auto-test deployments
+	dbConfig : [
+		autoTest : [
+			defaults : [
+				activeProfile : 'oracle',
+				host : '',
+				createPdb : true,
+				port : ,
+				cdbName : '',
+				cdbUsername : ''
+			],
+			'activemq' : [ pdbName : '', schemaName : 'MESSAGE' ],
+			'date-calculator-service' : [ pdbName : '', schemaName : 'CALENDAR' ],
+			'participant-service' : [ pdbName : '', schemaName : 'PARTICIPANT' ],
+			'reference-data-service' : [ pdbName : '', schemaName : 'REFERENCEDATA' ],
+			'term-repo-service' : [ pdbName : '', schemaName : 'LOANAUCTION' ],
+			'user-management-service' : [ pdbName : '', schemaName : 'APPUSER' ],
+			'wizard-configuration-service' : [ pdbName : '', schemaName : 'WIZARD' ],
+		]
+	],
+
+	// Notification email addresses for successful builds
+	buildSuccessEmails : buildParameters.commonParameterDefaults.buildSuccessEmails,
+
+	// Notification email addresses for failed builds
+	buildFailedEmails : buildParameters.commonParameterDefaults.buildFailedEmails,
+
+	// Addresses to excluse when sending notification emails
+	excludeEmails : buildParameters.commonParameterDefaults.excludeEmails,
+
+	// PaaS cluster name to use for automatic tests (configured in Jenkins)
+	autoTestPaasName : buildParameters.commonParameterDefaults.autoTestPaasName,
+
+	// ID of a Jenkins credential containing the PaaS authentication Token
+	autoTestPaasTokenCredentialId : buildParameters.commonParameterDefaults.autoTestPaasTokenCredentialId,
+
+	// PaaS cluster name to use for CI/CD deployments (must match a name configured in Jenkins)
+	deploymentPaasName : buildParameters.commonParameterDefaults.deploymentPaasName, 
+
+	// ID of a Jenkins credential containing the PaaS authentication Token for CI/CD deployments
+	deploymentPaasTokenCredentialId : buildParameters.commonParameterDefaults.deploymentPaasTokenCredentialId,
+
+	// Name of the PaaS project to use for CI/CD deployments
+	deploymentPaasProjectName : "ami-dev-latest", 
+
+	// ID of a Jenkins credential containing the user/pass to use for Git
+	gitCredentialId : buildParameters.commonParameterDefaults.gitCredentialId,
+
+	// Maximum number of old builds to keep. -1 indicates no maximum
+	oldBuildsMaxNumToKeep : buildParameters.commonParameterDefaults.oldBuildsMaxNumToKeep,
+
+	// Maximum number of days to keep old builds for. -1 indicates no maximum
+	oldBuildsMaxDaysToKeep : buildParameters.commonParameterDefaults.oldBuildsMaxDaysToKeep,
+
+	// Version of ng-bootstrap to install
+	ngBootstrapVersion : "1.0.0-beta.6"
+]
+
+// vars set/used by the pipeline
+def nodeImage = dockerImages.nodeImage()
+def projectImageTags = []
+def projectImageName
+def projectImage
+def projectVersion
+def buildId
+def buildVersion
+def deployedToAutoTest = false
+
+// Make sure we have the required DB configuration for automation testing
+databaseUtils.processDbConfig(pipelineParams.dbConfig, [amiConstants.dbConfigTypes.AUTO_TEST])
+
+pipeline {
+	agent any
+	tools {
+			oc "oc-3.7.2"
+	}
+	options {
+		// don't run multiple builds on the same branch...
+		disableConcurrentBuilds()
+		// add timestamps to build output
+		timestamps()
+		// Discard old builds.
+		buildDiscarder(logRotator(
+				numToKeepStr: "$pipelineParams.oldBuildsMaxNumToKeep",
+				daysToKeepStr: "$pipelineParams.oldBuildsMaxDaysToKeep"))
+	}
+	// Global env variables
+	environment {
+		// Openshift authentication token to use for PaaS interactions
+		// Note: credentials(...) only works properly inside an environment{...} block
+		AUTO_TEST_PAAS_TOKEN = credentials("$pipelineParams.autoTestPaasTokenCredentialId")
+		DEPLOYMENT_PAAS_TOKEN = credentials("$pipelineParams.deploymentPaasTokenCredentialId")
+	}
+	stages {
+		stage('Init') {
+			steps {
+				echo "Main-UI pipeline started with effective parameters: ${commonUtils.getPrettyMapString(pipelineParams)}"
+				script {
+
+					buildUtils.logBuildChangeSets()
+
+					buildId = buildUtils.getBuildId()
+					nodeImage.inside() {
+						// extract NPM project version by calling version.js
+						projectVersion = sh(returnStdout: true, script: 'node version.js').trim()
+					}
+					buildVersion = "$projectVersion-$buildId"
+					projectImageName = dockerImages.getFullImageName("ami/$pipelineParams.projectName")
+					echo "buildId: $buildId"
+					echo "buildVersion: $buildVersion"
+					echo "projectImageName: $projectImageName"
+				}
+			}
+		}
+		stage('Build') {
+			steps {
+				script {
+					nodeImage.inside(dockerImages.nodeDnsOverrides) {
+						sh "npm install"
+					}
+				}
+			}
+		}
+		stage('Test') {
+			when {
+				not { expression { pipelineParams.testStageDisabled } }
+			}
+			steps {
+				script {
+					nodeImage.inside() {
+						sh "ng test --karma-config karma-ci.conf.js --code-coverage || ${pipelineParams.continueOnTestFailure}"
+					}
+				}
+			}
+			post {
+				always {
+					script {
+						buildUtils.publishTestReport('Unit Test Report', '_reports', 'html-results.html')
+						buildUtils.publishTestReport('Code Coverage Report', 'coverage', 'index.html')
+					}
+				}
+			}
+		}
+		stage('SonarQube Scan') {
+			when {
+				anyOf {
+					// run if we're on master OR sonarScanOnBranches is true
+					branch 'master';
+					expression { pipelineParams.sonarScanOnBranches }
+				}
+			}
+			steps {
+				script {
+					dockerImages.nodeImage().inside(dockerImages.nodeDnsOverrides) {
+						nodeUtils.sonarScan()
+					}
+				}
+			}
+		}
+		stage('Package') {
+			steps {
+				script {
+					nodeImage.inside(dockerImages.nodeDnsOverrides) {
+						sh "ng build --prod --aot=false --build-optimizer=false"
+					}
+				}
+			}
+		}
+		stage('Build Docker Image') {
+			steps {
+				// run docker build and save serviceImage reference for later use
+				script {
+					// create manifest file used by the docker image
+					buildUtils.writeBuildProperties("docker/build.properties", buildVersion, pipelineParams.projectName)
+					// build docker image
+					projectImage = docker.build("$projectImageName:$buildVersion", "-f docker/Dockerfile .")
+				}
+			}
+		}
+		stage('Push Docker Image') {
+			steps {
+				script {
+					// push using buildVersion as the tag
+					projectImage.push(buildVersion)
+					// keep track of tags added to the image for cleaning up later
+					projectImageTags.add(buildVersion)
+				}
+			}
+		}
+		stage('Deploy to Auto-test') {
+			when { 
+				allOf {
+					anyOf {
+						// run if we're on master OR e2eTestOnBranches is true
+						branch 'master'; 
+						expression { pipelineParams.e2eTestOnBranches }
+					}
+					not { expression { pipelineParams.e2eTestStageDisabled} }
+				}
+			}
+			steps {
+				script {
+					deployedToAutoTest = true
+					openshift.withCluster(pipelineParams.autoTestPaasName, AUTO_TEST_PAAS_TOKEN) {
+						openshift.withProject(pipelineParams.autoTestProjectName) {
+							deployUtils.deployAmiSystem(
+									openshift, 
+									[(pipelineParams.projectName) : [imageTag : buildVersion]], 
+									"dev", 
+									pipelineParams.dbConfig[amiConstants.dbConfigTypes.AUTO_TEST])
+						}
+					}
+				}
+			}
+		}
+		stage('E2E Test') {
+			when { 
+				allOf {
+					anyOf {
+						// run if we're on master OR e2eTestOnBranches is true
+						branch 'master'; 
+						expression { pipelineParams.e2eTestOnBranches }
+					}
+					not { expression { pipelineParams.e2eTestStageDisabled} }
+				}
+			}
+			steps {
+				// only run e2e tests tagged as "smoke" and skip those tagged as 'defect' or 'ignore'
+				e2eTest(pipelineParams.autoTestPaasName, AUTO_TEST_PAAS_TOKEN, pipelineParams.autoTestProjectName, 
+						['~@defect', '~@ignore', '@smoke'])
+			}
+			post {
+				always {
+					script {
+						buildUtils.publishTestReport('E2E Test Report', 'e2e/reports/html', 'index.html')
+					}
+				}
+			}
+		}
+		stage('Tag Latest Docker Image') {
+			when { branch 'master' }
+			steps {
+				script {
+					projectImage.push("latest")
+					projectImageTags.add("latest")
+				}
+			}
+		}
+		stage('Tag Git') {
+				when { branch 'master' }
+				steps {
+					script {
+						withCredentials([usernamePassword(credentialsId: pipelineParams.gitCredentialId, usernameVariable: 'GIT_USER', passwordVariable: 'GIT_PASS')]) {
+							def gitRepoUrl = gitUtils.getRepoUrl().toLowerCase().replace('https://', 'https://$GIT_USER:$GIT_PASS@')
+							gitUtils.tagRepo(gitRepoUrl, buildVersion, "Verified Jenkins Build $buildVersion")
+					}
+				}
+			}
+		}
+		stage('Update DEV') {
+			when { branch 'master' }
+			steps {
+				script {
+					openshift.withCluster(pipelineParams.deploymentPaasName, DEPLOYMENT_PAAS_TOKEN) {
+						openshift.withProject(pipelineParams.deploymentPaasProjectName) {
+							// assuming DEV is already deployed and updating (instead of re-deploying) to 
+							// minimize down time
+							openshift.tag("$projectImageName:$buildVersion", "$pipelineParams.projectName:latest", "--insecure=true")
+						}
+					}
+				}
+			}
+		}
+	}
+	post {
+		always {
+			script {
+				if (deployedToAutoTest) {
+					// Clean up the auto-test project to free up resources on the PaaS
+					openshift.withCluster(pipelineParams.autoTestPaasName, AUTO_TEST_PAAS_TOKEN) {
+						openshift.withProject(pipelineParams.autoTestProjectName) {
+							deployUtils.undeployAmiSystem(
+									openshift, pipelineParams.dbConfig[(amiConstants.dbConfigTypes.AUTO_TEST)])
+						}
+					}
+				}
+				if (projectImageTags) {
+					// remove local service docker images (must pass all tags here to actually delete the image
+					sh "docker rmi -f ${projectImageTags.collect{tag -> projectImageName + ':' + tag}.join(' ')}"
+				}
+			}
+		}
+		success {
+			script {
+				buildUtils.sendBuildSuccessEmail(pipelineParams.buildSuccessEmails, pipelineParams.excludeEmails)
+			}
+		}
+		failure {
+			script {
+				buildUtils.sendBuildFailedEmail(pipelineParams.buildFailedEmails, pipelineParams.excludeEmails)
+			}
+		}
+	}
+}
