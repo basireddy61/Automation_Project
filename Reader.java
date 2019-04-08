@@ -15,7 +15,7 @@ import java.io.File;
 import java.io.IOException;
 
 /**
- * Created by olehk on 13/04/2017.
+ * 
  */
 public class Reader {
 
